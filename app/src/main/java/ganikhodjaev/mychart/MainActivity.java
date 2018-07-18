@@ -38,6 +38,9 @@ public class MainActivity extends AppCompatActivity {
     LineDataSet dataSetBTC;
     LineDataSet dataSetBTCEUR;
 
+    OkHttpClient client;
+    Request request = new Request.Builder().url("wss://api.bitfinex.com/ws/2").build();
+    WebSocket ws;
     Gson gson;
 
     long runTime = System.currentTimeMillis();
@@ -54,55 +57,64 @@ public class MainActivity extends AppCompatActivity {
 
         gson = new Gson();
 
-        setupSocketWithHttp();
+        connecting();
 
         chart = findViewById(R.id.chart);
 
     }
 
-    private void setupSocketWithHttp() {
-        OkHttpClient client = new OkHttpClient();
+    WebSocketListener listener = new WebSocketListener() {
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            super.onOpen(webSocket, response);
 
-        Request request = new Request.Builder().url("wss://api.bitfinex.com/ws/2").build();
-        WebSocketListener listener = new WebSocketListener() {
-            @Override
-            public void onOpen(WebSocket webSocket, Response response) {
-                super.onOpen(webSocket, response);
-
-                subscribeToTicker(webSocket);
+            subscribeToTicker(webSocket);
 
 
+        }
+
+        @Override
+        public void onMessage(WebSocket webSocket, String text) {
+            super.onMessage(webSocket, text);
+
+            if (text.startsWith("[")) {
+                onTickReceive(text);
+            } else {
+                onInfoMsgReceive(text);
             }
+        }
 
-            @Override
-            public void onMessage(WebSocket webSocket, String text) {
-                super.onMessage(webSocket, text);
+        @Override
+        public void onClosing(WebSocket webSocket, int code, String reason) {
+            super.onClosing(webSocket, code, reason);
+        }
 
-                if (text.startsWith("[")) {
-                    onTickReceive(text);
-                } else {
-                    onInfoMsgReceive(text);
-                }
+        @Override
+        public void onClosed(WebSocket webSocket, int code, String reason) {
+            super.onClosed(webSocket, code, reason);
+        }
+
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable t, @Nullable Response response) {
+            super.onFailure(webSocket, t, response);
+            try {
+                client.dispatcher().cancelAll();
+            } catch (Exception ignored) {
             }
+            connecting();
 
-            @Override
-            public void onClosing(WebSocket webSocket, int code, String reason) {
-                super.onClosing(webSocket, code, reason);
-            }
+        }
+    };
 
-            @Override
-            public void onClosed(WebSocket webSocket, int code, String reason) {
-                super.onClosed(webSocket, code, reason);
-            }
+    public void connecting() {
+        if (client == null)
+            client = new OkHttpClient();
 
-            @Override
-            public void onFailure(WebSocket webSocket, Throwable t, @Nullable Response response) {
-                super.onFailure(webSocket, t, response);
-            }
-        };
-        WebSocket ws = client.newWebSocket(request, listener);
+        if (ws != null) ws.cancel();
 
+        ws = client.newWebSocket(request, listener);
     }
+
 
     private void onInfoMsgReceive(String text) {
         EventResponse event = gson.fromJson(text, EventResponse.class);
